@@ -1,0 +1,15 @@
+{% macro navItem(name, title=false, uri=false) %}
+<li class="nav-item{{ title? ' nav-title'}}" id="nav-item-{{ name|lower }}">
+    <a href="{{ uri ?: '/'~name|lower|replace({' ':'-'}) }}" class="nav-item-link">{{ name|title }}</a>
+</li>
+{% endmacro %}
+<header>
+  <nav class="nav">
+    <ul class="nav-list">
+      {{ _self.navItem('Requestor', true, '/') }}
+      {{ _self.navItem('Dashboard', false, '/') }}
+      {{ _self.navItem('New Request', false, '/request/create') }}
+      {{ _self.navItem('Account', false, '/user/settings') }}
+    </ul>
+  </nav>
+</header>
