@@ -1,0 +1,17 @@
+{
+    "name": "kothman/requestor",
+    "description": "A request management system",
+    "type": "project",
+    "autoload": {
+        "psr-4": {
+            "Kothman\\Requestor\\": "src/"
+        }
+    },
+    "authors": [
+        {
+            "name": "Morgan Kothman",
+            "email": "abkothman@gmail.com"
+        }
+    ],
+    "require": {}
+}
