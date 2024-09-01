@@ -91,7 +91,7 @@ $defaultFormTheme = 'form_div_layout.html.twig';
 // setup the twig template manager
 $cache = $isDevMode ? false : __DIR__.'/../cache';
 $loader = new \Twig\Loader\FilesystemLoader([
-    __DIR__.'/../templates',
+    __DIR__.'/../resources/templates',
     __DIR__.'/../vendor/symfony/twig-bridge/Resources/views/Form'
 ]);
 $twig = new \Twig\Environment($loader, [
