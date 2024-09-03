@@ -1,0 +1,30 @@
+@import '_variables.scss';
+@import '_nav.scss';
+@import '_dashboard.scss';
+
+* {
+    box-sizing: border-box;
+}
+
+html, body {
+    margin: 0;
+    font-size: 1rem;
+    line-height: 1.5rem;
+    min-height: 100dvh;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+    color: var(--color);
+    background-color: var(--background-color);
+}
+
+main {
+    flex-grow: 1;
+    display: flex;
+    flex-direction: column;
+}
+footer {
+    padding: 1rem;
+    border-top: var(--border);
+    box-shadow: var(--shadow-top);
+}

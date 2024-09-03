@@ -1,6 +1,8 @@
 <?php
 namespace Kothman\Requestor;
 
+use Kothman\Requestor\Security\OAuth2Authenticator;
+use Kothman\Requestor\Controller\AbstractController as Controller;
 use Twig\Environment;
 use Doctrine\ORM\EntityManager;
 use Symfony\Component\HttpFoundation\Response;
@@ -14,22 +16,35 @@ require_once __DIR__.'/../vendor/autoload.php';
 
 class App {
 
-    protected Request $request;
     protected Response $response;
+    protected Controller $controller;
+    protected string $controllerAction;
+    protected OAuth2Authenticator $authenticator;
     
     public function __construct(
         protected Environment $twig,
         protected EntityManager $entityManager,
         protected RouteCollection $routes,
         protected Session $session,
+        protected Request $request,
     )
     {
-        $this->request = Request::createFromGlobals();
         $this->response = new Response();
+        $this->authenticator = new OAuth2Authenticator(
+            $this->session, $this->request, $_ENV,
+        );
     }
 
     public function run()
     {
+        // Every request should first be authenticated.
+        // The authenticator should only return a Response object if the user isn't completely authenticated
+        $authenticatorResponse = $this->authenticator->authenticate();
+        if ( null !== $authenticatorResponse) return $authenticatorResponse->send();
+        
+        // Matches the route with a controller and action, and saves data for request lifecycle
+        $this->matchRouteToControllerFromRequest();
+        // Gets the response data from dispatched controller
         $controllerResponse = $this->dispatchController();
         if (is_a($controllerResponse, Request::class) || is_subclass_of($controllerResponse, Response::class)) {
             $this->response = $controllerResponse;
@@ -37,25 +52,23 @@ class App {
             $this->response->setContent( (string) $controllerResponse);
         }
         return $this->response->send();
-        /*echo
-            (new Controller\DashboardController(
-                Request::createFromGlobals(),
-                $this->twig))
-                ->index();*/
     }
 
-    protected function dispatchController()
+    protected function matchRouteToControllerFromRequest(): void
     {
-        
         $context = (new RequestContext())->fromRequest($this->request);
         $matcher = new UrlMatcher($this->routes, $context);
         $parameters = $matcher->match($context->getPathInfo());
         
         $controllerInfo = $parameters['_controller'];
         
-        $controller = new $controllerInfo['class']($this->request, $this->twig, $this->session);
-        $action = $controllerInfo['action'];
-        
-        return $controller->$action();
+        $this->controller = new $controllerInfo['class']($this->request, $this->twig, $this->session);
+        $this->action = $controllerInfo['action'];
     }
+
+    protected function dispatchController()
+    {
+        return $this->controller->{$this->action}();
+    }
+
 }

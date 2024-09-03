@@ -108,11 +108,12 @@ $twig->addRuntimeLoader(new \Twig\RuntimeLoader\FactoryRuntimeLoader([
 ]));
 // add the FormExtension to twig
 $twig->addExtension(new FormExtension());
-
+if ($isDevMode)
+    $twig->addExtension(new \Twig\Extension\DebugExtension());
 // setup the Router - all routes should be defined in config/routes.php
 $routes = require_once __DIR__.'/../config/routes.php';
 
-$app = new App($twig, $entityManager, $routes, $session);
+$app = new App($twig, $entityManager, $routes, $session, $request);
 $app->run();
 
 /* Save and close the session */

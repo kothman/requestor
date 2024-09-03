@@ -1,41 +1,66 @@
 <?php
 /**
- * src/Controller/OAuth2Authenticator.php
+ * src/Security/OAuth2Authenticator.php
  *
  * Morgan Kothman <abkothman@gmail.com>
  *
- * Handles access controller for protected routes.
+ * Handles access control for protected routes.
  */
-namespace Kothman\Requestor;
+namespace Kothman\Requestor\Security;
+
+use Symfony\Component\HttpClient\HttpClient;
+use Symfony\Component\HttpFoundation\RedirectResponse;
+use Symfony\Component\HttpFoundation\Request;
+use Symfony\Component\HttpFoundation\Response;
+use Symfony\Component\HttpFoundation\Session\Session;
 
 class OAuth2Authenticator {
 
-    protected array $env;
+    protected array $tokenData;
+    protected array $userData;
     protected string $authEndpoint;
+    protected string $tokenEndpoint;
     
-    public function __construct()
+    public function __construct(
+        protected Session $session,
+        protected Request $request,
+        protected array $env
+    )
     {
-        $this->env = $_ENV;
         $this->authEndpoint = $this->getOAuth2Endpoint();
+        $this->tokenEndpoint = $this->env['OAUTH2_TOKEN_ENDPOINT'];
     }
-
-        /**
+    
+    /**
      * Extracts and validates auth token
      */
-    public function authenticate(Request $request): Response
+    public function authenticate(): ?Response
     {
-        if (false === $request->query->has('code')) {
+        if ( true === $this->request->query->get('code')) {
+            // If they have the code, save it and request access token 
+            $this->code = $request->query->get('code');
+            $this->getAccessToken();
+            $this->requestMicrosoftUserInfo();
+            // Set the tokenData and userData on the session, so that the user is authenticated during this session,
+            // and so this data can be later accesses
+            $this->session->set('tokenData', $this->tokenData);
+            $this->session->set('userData', $this->userData);
+
+            // Redirect to main page
+            return new RedirectResponse('/');
+        } else if (false === $this->request->query->get('code') || !$this->isAuthenticated()) {
             // Redirect to Microsoft login endpoint if the user isn't authenticated and doesn't have a code
             return new RedirectResponse($this->authEndpoint);
-        }
+        } 
 
-        $accessTokenData = $this->getAccessToken($request->query->get('code'));
-        $microsoftUserInfo = $this->requestMicrosoftUserInfo($accessTokenData['access_token']);
-        $email = $microsoftUserInfo['mail'];
+        // The user is already authenticated, don't return a redirect response
+        return null;
+    }
 
-        // If we have the email at this point, the user is authenticated. Otherwise,
-        // an error would have been thrown.
+    protected function isAuthenticated(): bool
+    {
         
+        return (!empty($this->tokenData) && !empty($this->userData));
     }
     
     protected function getOAuth2Endpoint(): string {
@@ -47,68 +72,67 @@ class OAuth2Authenticator {
             '&scope=offline_access%20user.read&' .
             '&state=12345';
     }
-
-    protected function requestAccessToken(string $code): array
+    
+    protected function requestAccessToken(): void
     {
-        // Do post for acess token
+        // Do post for access token
         $client = HttpClient::create();
-        $response = $client->request('POST', $this->env['OAUTH2_TOKEN_ENDPOINT'], [
-            'body' => [
+        $response = $client->request(
+            'POST',
+            $this->tokenEndpoint,
+            [ 'body' => [
                 'client_id' => $this->env['OAUTH2_CLIENT_ID'],
                 'client_secret' => $this->env['OAUTH2_CLIENT_SECRET'],
                 'grant_type' => 'authorization_code',
-                'code' => $code,
+                'code' => $this->code,
                 'redirect_uri' => $this->env['APP_URL'] . '/auth',
                 'scope' => 'offline_access user.read',
-            ],
-        ]);
+            ]]
+        );
         $statusCode = $response->getStatusCode();
         if ($statusCode != 200) {
             $errorArray = json_decode($response->getContent(false));
             throw new CustomUserMessageAuthenticationException('Invalid authentication: ' . var_export($errorArray, true));
         }
-        $data = json_decode($response->getContent(), true);
-        return $data;
+        $data = $response->getContent();
+        $this->tokenData = $response->toArray();
     }
         
-    protected function verifyAccessToken(array $tokenData): void
+    protected function verifyAccessToken(): void
     {
         // Make sure we got all the expected info
-        if ( ! (array_key_exists('access_token', $tokenData) &&
-                array_key_exists('token_type', $tokenData) &&
-                array_key_exists('expires_in', $tokenData) &&
-                array_key_exists('scope', $tokenData) &&
-                array_key_exists('refresh_token', $tokenData) &&
-                array_key_exists('ext_expires_in', $tokenData))) {
-            throw new CustomUserMessageAuthenticationException('Something went wrong: expected resonse data missing from OAuth2 access_token request.<br>' . var_export($tokenData, true));
+        if ( ! (array_key_exists('access_token', $this->tokenData) &&
+                array_key_exists('token_type', $this->tokenData) &&
+                array_key_exists('expires_in', $this->tokenData) &&
+                array_key_exists('scope', $this->tokenData) &&
+                array_key_exists('refresh_token', $this->tokenData) &&
+                array_key_exists('ext_expires_in', $this->tokenData))) {
+            throw new CustomUserMessageAuthenticationException('Something went wrong: expected resonse data missing from OAuth2 access_token request.<br>' . var_export($this->tokenData, true));
         }
     }
 
-    protected function requestMicrosoftUserInfo(string $accessToken): array
+    protected function requestMicrosoftUserInfo(): void
     {
         $client = HttpClient::create();
         $response = $client->request('GET', 'https://graph.microsoft.com/v1.0/me', [
-            'headers' => ['Authorization' => 'Bearer ' . $accessToken],
+            'headers' => ['Authorization' => 'Bearer ' . $this->tokenData['access_token']],
         ]);
         $statusCode = $response->getStatusCode();
         if ($statusCode != 200) {
             // Something went wrong requesting the user email with our access token
             throw new CustomUserMessageAuthenticationException('Something went wrong trying to retrieve user email: ' . var_export($response->getContent(false), true));
         }
-        $userInfo = json_decode($response->getContent(), true);
-        if ( !array_key_exists('mail', $userInfo)) {
-            throw new CustomUserMEssageAuthenticationException('Something went wrong trying to retrieve the email from response array.<br>' . $userInfo);
+        $userData = $response->toArray();
+        if ( !array_key_exists('mail', $userData)) {
+            throw new CustomUserMEssageAuthenticationException('Something went wrong trying to retrieve the email from response array.<br>' . $userData);
         }
-        return $userInfo;
+        $this->userData = $userData;
     }
         
-    protected function getAccessToken(string $code): array
+    protected function getAccessToken(): void
     {
-        $tokenData = $this->requestAccessToken($code);
-        $this->verifyAccessToken($tokenData);
-        return $tokenData;
-            
-    }    
-
+        $this->requestAccessToken();
+        $this->verifyAccessToken();
+    }
     
 }

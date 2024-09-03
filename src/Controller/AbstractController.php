@@ -14,4 +14,14 @@ abstract class AbstractController
     {
 
     }
+
+    protected function getUserData(): array
+    {
+        return $this->session->get('user-data', []);
+    }
+
+    protected function getTokenData(): array
+    {
+        return $this->session->get('token-data', []);
+    }
 }
